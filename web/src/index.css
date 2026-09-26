@@ -203,14 +203,6 @@
 }
 
 /* map chrome */
-.map-interactive,
-.map-interactive .maplibregl-canvas-container,
-.map-interactive .maplibregl-canvas {
-  pointer-events: auto;
-  touch-action: none;
-}
-.map-interactive { cursor: grab; }
-.map-interactive:active { cursor: grabbing; }
 .maplibregl-ctrl-attrib {
   background: var(--color-ink-1) !important;
   color: var(--color-fg-3) !important;
