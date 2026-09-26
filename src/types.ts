@@ -1,6 +1,4 @@
 export type Utility = 'DESC' | 'GPC'
-export type ProjectStatus = 'In progress' | 'Planned'
-
 export interface Project {
   id: string
   utility: Utility
@@ -9,16 +7,16 @@ export interface Project {
   x: number
   y: number
   year: number
-  status: ProjectStatus
+  inServiceDate: string
 }
 
 export interface Opportunity {
+  id: string
   a: string
   b: string
-  distance: number
-  months: number
-  score: number
+  distanceKm: number
+  distanceMiles: number
+  dateGapDays: number
   priority: 'High' | 'Medium'
   reason: string
-  value: string
 }

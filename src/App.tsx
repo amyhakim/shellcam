@@ -1,94 +1,63 @@
-import { useMemo, useState } from 'react'
-import { opportunities, projects } from './data'
-import type { Opportunity, ProjectStatus, Utility } from './types'
+import { useEffect, useMemo, useState } from 'react'
+import type { Opportunity, Project, Utility } from './types'
 
 type UtilityFilter = Utility | 'all'
 type YearFilter = 'all' | '2025' | '2026' | '2027+'
-type StatusFilter = ProjectStatus | 'all'
+type ProjectRow = { project_id: string; utility: string; project_name: string; lat_center: number | string | null; lon_center: number | string | null; in_service_date: string | null }
+type OpportunityRow = { overlap_id: string; project_a_id: string; project_b_id: string; distance_miles: number | string; time_gap_days: number }
 
-const projectById = (id: string) => projects.find((project) => project.id === id)!
+const compactName = (name: string) => name.replace(/: (Construct|Rebuild)$/i, '').replace(/^SAV: /i, '').replace(/\s+/g, ' ')
 
-function MapView({ visibleProjects, visibleOpportunities, onSelect }: {
-  visibleProjects: typeof projects
-  visibleOpportunities: Opportunity[]
-  onSelect: (opportunity: Opportunity) => void
-}) {
-  return (
-    <div className="map" aria-label="Map of South Carolina and Georgia utility projects">
-      <svg className="map-base" viewBox="0 0 760 470" preserveAspectRatio="none" aria-hidden="true">
-        <defs><pattern id="grid" width="34" height="34" patternUnits="userSpaceOnUse"><path d="M34 0H0V34" fill="none" stroke="#d8e1df" strokeWidth=".7" /></pattern></defs>
-        <rect width="760" height="470" fill="url(#grid)" />
-        <path className="state" d="M278 36 L662 90 706 211 620 342 482 313 393 227 263 180Z" />
-        <path className="state" d="M115 83 L278 36 263 180 393 227 482 313 411 438 170 410 108 290Z" />
-        <path className="river" d="M278 36C255 128 278 175 393 227S464 297 482 313 429 397 411 438" />
-        <text x="505" y="165">SOUTH CAROLINA</text><text x="210" y="300">GEORGIA</text>
-        <path className="road" d="M101 365C265 315 382 256 681 210" /><path className="road" d="M224 73C313 189 409 253 611 363" />
-      </svg>
-      <div>{visibleOpportunities.map((opportunity) => {
-        const a = projectById(opportunity.a); const b = projectById(opportunity.b)
-        const dx = b.x - a.x; const dy = b.y - a.y
-        return <button key={`${opportunity.a}-${opportunity.b}`} className="connection" data-distance={`${opportunity.distance} km`} aria-label={`Open ${a.name} and ${b.name}`} onClick={() => onSelect(opportunity)} style={{ left: `${a.x}%`, top: `${a.y}%`, width: `${Math.sqrt(dx * dx + dy * dy)}%`, transform: `rotate(${Math.atan2(dy, dx) * 180 / Math.PI}deg)` }} />
-      })}</div>
-      <div>{visibleProjects.map((project) => {
-        const match = visibleOpportunities.find((item) => item.a === project.id || item.b === project.id)
-        return <button key={project.id} className={`marker ${project.utility}`} style={{ left: `${project.x}%`, top: `${project.y}%` }} title={project.fullName} onClick={() => match && onSelect(match)}><span>{project.name}</span></button>
-      })}</div>
-      <div className="map-controls"><button aria-label="Zoom in">+</button><button aria-label="Zoom out">−</button></div>
-      <div className="scale">20 km</div>
-    </div>
-  )
+function normalizeProjects(rows: ProjectRow[]): Project[] {
+  const located = rows.filter((row) => row.lat_center != null && row.lon_center != null)
+  const lats = located.map((row) => Number(row.lat_center)); const lons = located.map((row) => Number(row.lon_center))
+  const minLat = Math.min(...lats); const maxLat = Math.max(...lats); const minLon = Math.min(...lons); const maxLon = Math.max(...lons)
+  return located.map((row) => {
+    const latitude = Number(row.lat_center); const longitude = Number(row.lon_center); const inServiceDate = row.in_service_date ?? ''
+    return { id: row.project_id, utility: row.utility.toLowerCase().includes('dominion') ? 'DESC' : 'GPC', name: compactName(row.project_name), fullName: row.project_name, x: 10 + ((longitude - minLon) / Math.max(maxLon - minLon, 1)) * 80, y: 10 + ((maxLat - latitude) / Math.max(maxLat - minLat, 1)) * 80, year: inServiceDate ? new Date(inServiceDate).getUTCFullYear() : 0, inServiceDate }
+  })
+}
+
+const normalizeOpportunities = (rows: OpportunityRow[]): Opportunity[] => rows.map((row) => {
+  const distanceMiles = Number(row.distance_miles); const highPriority = distanceMiles <= 8 && row.time_gap_days <= 730
+  return { id: row.overlap_id, a: row.project_a_id, b: row.project_b_id, distanceMiles, distanceKm: Number((distanceMiles * 1.609344).toFixed(1)), dateGapDays: row.time_gap_days, priority: highPriority ? 'High' : 'Medium', reason: highPriority ? 'Close geography and similar in-service timing' : 'Within the supplied 25-mile coordination range' }
+})
+
+function MapView({ projects, visibleProjects, visibleOpportunities, onSelect }: { projects: Project[]; visibleProjects: Project[]; visibleOpportunities: Opportunity[]; onSelect: (opportunity: Opportunity) => void }) {
+  const projectById = (id: string) => projects.find((project) => project.id === id)
+  return <div className="map" aria-label="Map of South Carolina and Georgia utility projects">
+    <svg className="map-base" viewBox="0 0 760 470" preserveAspectRatio="none" aria-hidden="true"><defs><pattern id="grid" width="34" height="34" patternUnits="userSpaceOnUse"><path d="M34 0H0V34" fill="none" stroke="#d8e1df" strokeWidth=".7" /></pattern></defs><rect width="760" height="470" fill="url(#grid)" /><path className="state" d="M278 36 L662 90 706 211 620 342 482 313 393 227 263 180Z" /><path className="state" d="M115 83 L278 36 263 180 393 227 482 313 411 438 170 410 108 290Z" /><path className="river" d="M278 36C255 128 278 175 393 227S464 297 482 313 429 397 411 438" /><text x="505" y="165">SOUTH CAROLINA</text><text x="210" y="300">GEORGIA</text><path className="road" d="M101 365C265 315 382 256 681 210" /><path className="road" d="M224 73C313 189 409 253 611 363" /></svg>
+    <div>{visibleOpportunities.map((opportunity) => { const a = projectById(opportunity.a); const b = projectById(opportunity.b); if (!a || !b) return null; const dx = b.x - a.x; const dy = b.y - a.y; return <button key={opportunity.id} className="connection" data-distance={`${opportunity.distanceKm} km`} aria-label={`Open ${a.name} and ${b.name}`} onClick={() => onSelect(opportunity)} style={{ left: `${a.x}%`, top: `${a.y}%`, width: `${Math.sqrt(dx * dx + dy * dy)}%`, transform: `rotate(${Math.atan2(dy, dx) * 180 / Math.PI}deg)` }} /> })}</div>
+    <div>{visibleProjects.map((project) => { const match = visibleOpportunities.find((item) => item.a === project.id || item.b === project.id); return <button key={project.id} className={`marker ${project.utility}`} style={{ left: `${project.x}%`, top: `${project.y}%` }} title={project.fullName} onClick={() => match && onSelect(match)}><span>{project.name}</span></button> })}</div>
+    <div className="map-controls"><button aria-label="Zoom in">+</button><button aria-label="Zoom out">−</button></div><div className="scale">20 km</div>
+  </div>
 }
 
 function App() {
-  const [utility, setUtility] = useState<UtilityFilter>('all')
-  const [year, setYear] = useState<YearFilter>('all')
-  const [distance, setDistance] = useState(40)
-  const [status, setStatus] = useState<StatusFilter>('all')
-  const [selected, setSelected] = useState<Opportunity | null>(null)
-  const [showToast, setShowToast] = useState(false)
+  const [projects, setProjects] = useState<Project[]>([]); const [opportunities, setOpportunities] = useState<Opportunity[]>([])
+  const [loadError, setLoadError] = useState(''); const [loading, setLoading] = useState(true)
+  const [utility, setUtility] = useState<UtilityFilter>('all'); const [year, setYear] = useState<YearFilter>('all'); const [distance, setDistance] = useState(40)
+  const [selected, setSelected] = useState<Opportunity | null>(null); const [showToast, setShowToast] = useState(false)
 
-  const visibleProjects = useMemo(() => projects.filter((project) =>
-    (utility === 'all' || project.utility === utility) &&
-    (year === 'all' || (year === '2027+' ? project.year >= 2027 : project.year === Number(year))) &&
-    (status === 'all' || project.status === status)
-  ), [utility, year, status])
-  const projectIds = new Set(visibleProjects.map((project) => project.id))
-  const visibleOpportunities = opportunities.filter((item) => item.distance <= distance && projectIds.has(item.a) && projectIds.has(item.b))
-  const active = selected ?? opportunities[0]
-  const activeA = projectById(active.a); const activeB = projectById(active.b)
+  useEffect(() => { Promise.all([fetch('/api/projects').then((response) => { if (!response.ok) throw new Error('Projects unavailable'); return response.json() as Promise<ProjectRow[]> }), fetch('/api/opportunities').then((response) => { if (!response.ok) throw new Error('Opportunities unavailable'); return response.json() as Promise<OpportunityRow[]> })]).then(([projectRows, opportunityRows]) => { setProjects(normalizeProjects(projectRows)); setOpportunities(normalizeOpportunities(opportunityRows)) }).catch((error: Error) => setLoadError(error.message)).finally(() => setLoading(false)) }, [])
 
-  const reset = () => { setUtility('all'); setYear('all'); setDistance(40); setStatus('all') }
-  const generateBrief = () => { setShowToast(true); window.setTimeout(() => setShowToast(false), 2600) }
+  const projectById = (id: string) => projects.find((project) => project.id === id)
+  const visibleProjects = useMemo(() => projects.filter((project) => (utility === 'all' || project.utility === utility) && (year === 'all' || (year === '2027+' ? project.year >= 2027 : project.year === Number(year)))), [projects, utility, year])
+  const projectIds = new Set(visibleProjects.map((project) => project.id)); const visibleOpportunities = opportunities.filter((item) => item.distanceKm <= distance && projectIds.has(item.a) && projectIds.has(item.b))
+  const active = selected ?? visibleOpportunities[0] ?? opportunities[0]; const activeA = active ? projectById(active.a) : undefined; const activeB = active ? projectById(active.b) : undefined
+  const reset = () => { setUtility('all'); setYear('all'); setDistance(40) }; const generateBrief = () => { setShowToast(true); window.setTimeout(() => setShowToast(false), 2600) }
 
-  return <>
-    <header className="topbar">
-      <a className="brand" href="#"><span className="brand-mark"><i/><i/><i/></span><span>Gridlock <b>Intelligence</b></span></a>
-      <div className="topbar-actions"><span className="data-status"><span/> Data refreshed today</span><button className="icon-button">?</button><button className="avatar">AH</button></div>
-    </header>
-    <main>
-      <section className="intro"><div><p className="eyebrow">REGIONAL PLANNING WORKSPACE</p><h1>Coordination opportunities</h1><p className="lede">See where planned utility projects are close enough—and timely enough—to work better together.</p></div><button className="secondary-button" onClick={generateBrief}><span>✦</span> Generate briefing</button></section>
-      <section className="filterbar">
-        <label>Utility<select value={utility} onChange={(e) => setUtility(e.target.value as UtilityFilter)}><option value="all">All utilities</option><option value="DESC">Dominion Energy SC</option><option value="GPC">Georgia Power</option></select></label>
-        <label>In-service window<select value={year} onChange={(e) => setYear(e.target.value as YearFilter)}><option value="all">2025–2030</option><option value="2025">2025</option><option value="2026">2026</option><option value="2027+">2027 and later</option></select></label>
-        <label>Coordination range<select value={distance} onChange={(e) => setDistance(Number(e.target.value))}><option value="40">Within 40 km</option><option value="8">Within 8 km</option><option value="1.6">Within 1.6 km</option></select></label>
-        <label>Status<select value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)}><option value="all">All statuses</option><option value="In progress">In progress</option><option value="Planned">Planned</option></select></label>
-        <button className="text-button" onClick={reset}>Reset filters</button>
-      </section>
-      <section className="metrics">
-        <article><p>Projects analyzed</p><strong>{visibleProjects.length}</strong><small>Across 2 utilities</small></article>
-        <article><p>Opportunities found</p><strong>{visibleOpportunities.length}</strong><small><b>{visibleOpportunities.filter((item) => item.priority === 'High').length}</b> high priority</small></article>
-        <article><p>Closest overlap</p><strong>{visibleOpportunities.length ? Math.min(...visibleOpportunities.map((item) => item.distance)) : '—'} <em>km</em></strong><small>Closest qualifying pair</small></article>
-        <article className="accent-metric"><p>Potential shared value</p><strong>$1.2–2.1M</strong><small>Planning estimate · 4 matches</small></article>
-      </section>
-      <section className="dashboard-grid">
-        <article className="panel map-panel"><div className="panel-heading"><div><h2>Projects by location</h2><p>Click a project or connection to inspect it</p></div><div className="legend"><span><i className="dot desc"/>Dominion</span><span><i className="dot gpc"/>Georgia Power</span><span><i className="line-key"/>Opportunity</span></div></div><MapView visibleProjects={visibleProjects} visibleOpportunities={visibleOpportunities} onSelect={setSelected}/></article>
-        <article className="panel opportunities-panel"><div className="panel-heading list-heading"><div><h2>Top opportunities</h2><p>Ranked by proximity, timing, and project fit</p></div><button className="sort-button">Ranked ↓</button></div><div className="opportunity-list">{visibleOpportunities.map((item, index) => { const a = projectById(item.a); const b = projectById(item.b); return <button key={`${item.a}-${item.b}`} className={`opportunity ${selected === item ? 'selected' : ''}`} onClick={() => setSelected(item)}><div className="opp-top"><span className="rank">#{index + 1} · Score {item.score}</span><span className={`badge ${item.priority.toLowerCase()}`}>{item.priority} priority</span></div><h3>{a.name} ↔ {b.name}</h3><p>Dominion Energy SC + Georgia Power</p><div className="opp-metrics"><span><b>{item.distance} km</b> apart</span><span><b>{item.months} mo.</b> overlap</span><span><b>{item.value}</b> value</span></div><div className="reason">✓ {item.reason}</div></button>})}</div></article>
-        <article className="panel timeline-panel"><div className="panel-heading"><div><h2>Construction timeline</h2><p>Selected opportunity · overlapping work windows</p></div><span className="confidence">High confidence</span></div><div className="timeline"><div className="years"><span>2024</span><span>2025</span><span>2026</span><span>2027</span><span>2028</span></div><div className="timeline-row"><label><i className="dot desc"/><span>{activeA.utility === 'DESC' ? activeA.name : activeB.name}</span></label><div className="track"><b className="bar desc-bar" style={{left:'9%',width:'38%'}}/></div></div><div className="timeline-row"><label><i className="dot gpc"/><span>{activeA.utility === 'GPC' ? activeA.name : activeB.name}</span></label><div className="track"><b className="bar gpc-bar" style={{left:'25%',width:'45%'}}/></div></div><div className="overlap-caption"><span/><b>{active.months} months of concurrent construction</b><small>Potential to coordinate crews, staging, and equipment</small></div></div></article>
-      </section>
-    </main>
-    <aside className={`drawer ${selected ? 'open' : ''}`} aria-hidden={!selected}><button className="drawer-close" onClick={() => setSelected(null)}>×</button><p className="eyebrow">COORDINATION BRIEF</p><div className="priority-pill">{active.priority} priority</div><h2>{activeA.name} ↔ {activeB.name}</h2><p className="drawer-summary">These projects are close enough to share regional construction resources while their planned work windows overlap.</p><div className="drawer-stats"><div><strong>{active.distance} km</strong><small>Closest distance</small></div><div><strong>{active.months} mo.</strong><small>Timeline overlap</small></div><div><strong>230 kV</strong><small>Shared voltage</small></div></div><section><h3>Why this matters</h3><ul><li>Shared crews and heavy equipment are operationally realistic.</li><li>Common voltage class increases contractor and material compatibility.</li><li>Cross-river staging could reduce duplicate mobilization.</li></ul></section><section className="ai-note"><span>✦</span><div><h3>AI planning note</h3><p>This is a decision aid, not a final engineering conclusion. Confirm route geometry, outages, procurement dates, and CEII constraints with both utilities.</p></div></section><section><h3>Recommended next step</h3><p>Schedule a joint constructability review and compare staging-yard, crane, and outage requirements.</p></section><button className="primary-button">Export one-page brief</button><button className="secondary-button wide">View source evidence</button></aside>
-    <div className={`scrim ${selected ? 'open' : ''}`} onClick={() => setSelected(null)}/><div className={`toast ${showToast ? 'open' : ''}`}>Briefing generated from 4 ranked opportunities.</div>
-  </>
+  if (loading) return <main><p className="loading-state">Loading verified project data…</p></main>
+  if (loadError) return <main><section className="error-state"><h1>Data connection unavailable</h1><p>{loadError}. Check the Railway deployment logs and DATABASE_URL.</p></section></main>
+
+  return <><header className="topbar"><a className="brand" href="#"><span className="brand-mark"><i/><i/><i/></span><span>Gridlock <b>Intelligence</b></span></a><div className="topbar-actions"><span className="data-status"><span/> Live Tiger Data</span><button className="icon-button">?</button><button className="avatar">AH</button></div></header><main>
+    <section className="intro"><div><p className="eyebrow">REGIONAL PLANNING WORKSPACE</p><h1>Coordination opportunities</h1><p className="lede">Verified utility projects and supplied cross-utility proximity matches.</p></div><button className="secondary-button" onClick={generateBrief}><span>✦</span> Generate briefing</button></section>
+    <section className="filterbar"><label>Utility<select value={utility} onChange={(event) => setUtility(event.target.value as UtilityFilter)}><option value="all">All utilities</option><option value="DESC">Dominion Energy SC</option><option value="GPC">Georgia Power</option></select></label><label>In-service window<select value={year} onChange={(event) => setYear(event.target.value as YearFilter)}><option value="all">All dates</option><option value="2025">2025</option><option value="2026">2026</option><option value="2027+">2027 and later</option></select></label><label>Coordination range<select value={distance} onChange={(event) => setDistance(Number(event.target.value))}><option value="40">Within 40 km</option><option value="16">Within 16 km</option><option value="8">Within 8 km</option></select></label><button className="text-button" onClick={reset}>Reset filters</button></section>
+    <section className="metrics"><article><p>Projects analyzed</p><strong>{visibleProjects.length}</strong><small>Loaded from Tiger Data</small></article><article><p>Opportunities found</p><strong>{visibleOpportunities.length}</strong><small><b>{visibleOpportunities.filter((item) => item.priority === 'High').length}</b> high priority</small></article><article><p>Closest overlap</p><strong>{visibleOpportunities.length ? Math.min(...visibleOpportunities.map((item) => item.distanceKm)) : '—'} <em>km</em></strong><small>Supplied center-point estimate</small></article><article className="accent-metric"><p>Source status</p><strong>{projects.length ? 'Live' : '—'}</strong><small>{projects.length} project records · {opportunities.length} matches</small></article></section>
+    <section className="dashboard-grid"><article className="panel map-panel"><div className="panel-heading"><div><h2>Projects by location</h2><p>Click a project or connection to inspect it</p></div><div className="legend"><span><i className="dot desc"/>Dominion</span><span><i className="dot gpc"/>Georgia Power</span><span><i className="line-key"/>Opportunity</span></div></div><MapView projects={projects} visibleProjects={visibleProjects} visibleOpportunities={visibleOpportunities} onSelect={setSelected}/></article>
+      <article className="panel opportunities-panel"><div className="panel-heading list-heading"><div><h2>Supplied opportunities</h2><p>Ordered by center-point distance</p></div><button className="sort-button">Nearest ↓</button></div><div className="opportunity-list">{visibleOpportunities.map((item, index) => { const a = projectById(item.a); const b = projectById(item.b); if (!a || !b) return null; return <button key={item.id} className={`opportunity ${selected?.id === item.id ? 'selected' : ''}`} onClick={() => setSelected(item)}><div className="opp-top"><span className="rank">#{index + 1} · {item.id}</span><span className={`badge ${item.priority.toLowerCase()}`}>{item.priority} priority</span></div><h3>{a.name} ↔ {b.name}</h3><p>Dominion Energy SC + Georgia Power</p><div className="opp-metrics"><span><b>{item.distanceKm} km</b> apart</span><span><b>{item.dateGapDays} days</b> date gap</span></div><div className="reason">✓ {item.reason}</div></button> })}</div></article>
+      {active && activeA && activeB && <article className="panel timeline-panel"><div className="panel-heading"><div><h2>In-service timing</h2><p>Selected opportunity · supplied project dates</p></div><span className="confidence">Center-point estimate</span></div><div className="timeline"><div className="years"><span>2024</span><span>2025</span><span>2026</span><span>2027</span><span>2028</span></div><div className="timeline-row"><label><i className="dot desc"/><span>{activeA.utility === 'DESC' ? activeA.name : activeB.name}</span></label><div className="track"><b className="bar desc-bar" style={{left:'9%',width:'8%'}}/></div></div><div className="timeline-row"><label><i className="dot gpc"/><span>{activeA.utility === 'GPC' ? activeA.name : activeB.name}</span></label><div className="track"><b className="bar gpc-bar" style={{left:'25%',width:'8%'}}/></div></div><div className="overlap-caption"><span/><b>{active.dateGapDays} days between supplied in-service dates</b><small>Review construction schedules before treating this as concurrent work</small></div></div></article>}</section>
+  </main>{active && activeA && activeB && <aside className={`drawer ${selected ? 'open' : ''}`} aria-hidden={!selected}><button className="drawer-close" onClick={() => setSelected(null)}>×</button><p className="eyebrow">COORDINATION BRIEF</p><div className="priority-pill">{active.priority} priority</div><h2>{activeA.name} ↔ {activeB.name}</h2><p className="drawer-summary">This supplied project pair falls within the 25-mile coordination screen. Confirm route geometry and construction schedules before acting.</p><div className="drawer-stats"><div><strong>{active.distanceMiles} mi</strong><small>Center-point distance</small></div><div><strong>{active.distanceKm} km</strong><small>Converted distance</small></div><div><strong>{active.dateGapDays} days</strong><small>In-service date gap</small></div></div><section><h3>Source records</h3><ul><li>{activeA.fullName} · {activeA.inServiceDate || 'Date unavailable'}</li><li>{activeB.fullName} · {activeB.inServiceDate || 'Date unavailable'}</li></ul></section><section className="ai-note"><span>✦</span><div><h3>Planning note</h3><p>This is a decision aid, not a final engineering conclusion. Confirm route geometry, outages, procurement dates, and CEII constraints with both utilities.</p></div></section><section><h3>Recommended next step</h3><p>Validate the two project records against their source pages, then schedule a joint constructability review.</p></section></aside>}<div className={`scrim ${selected ? 'open' : ''}`} onClick={() => setSelected(null)}/><div className={`toast ${showToast ? 'open' : ''}`}>Briefing prepared from {visibleOpportunities.length} supplied opportunities.</div></>
 }
 
 export default App
