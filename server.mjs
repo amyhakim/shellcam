@@ -16,7 +16,12 @@ databaseUrl.searchParams.delete('uselibpqcompat')
 const pool = new Pool({
   connectionString: databaseUrl.toString(),
   ssl: { rejectUnauthorized: false },
+  max: Number(process.env.DATABASE_POOL_SIZE) || 5,
+  connectionTimeoutMillis: 10_000,
+  idleTimeoutMillis: 30_000,
 })
+
+pool.on('error', (error) => console.error('Unexpected database pool error', error))
 
 const query = (sql) => async (_request, response) => {
   try {
@@ -89,9 +94,24 @@ app.get('/api/opportunities', query(`
   ORDER BY pairs.distance_meters, pairs.time_gap_days NULLS LAST
 `))
 
+app.use('/api', (_request, response) => {
+  response.status(404).json({ status: 'error', message: 'API route not found' })
+})
+
 const directory = path.dirname(fileURLToPath(import.meta.url))
 const dist = path.join(directory, 'dist')
 app.use(express.static(dist))
 app.use((_request, response) => response.sendFile(path.join(dist, 'index.html')))
 
-app.listen(port, '0.0.0.0', () => console.log(`Gridlock Intelligence listening on ${port}`))
+const server = app.listen(port, '0.0.0.0', () => console.log(`Gridlock Intelligence listening on ${port}`))
+
+const shutdown = (signal) => {
+  console.log(`${signal} received; shutting down`)
+  server.close(async () => {
+    await pool.end()
+    process.exit(0)
+  })
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'))
+process.on('SIGINT', () => shutdown('SIGINT'))

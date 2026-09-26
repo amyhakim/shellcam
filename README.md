@@ -25,3 +25,22 @@ npm run dev
 
 Filters, map markers, ranked opportunities, the briefing notification, and the
 opportunity detail drawer are interactive.
+
+## Deploy on Railway
+
+This repository deploys as one Railway service. `pnpm run build` compiles the
+React frontend into `dist/`, and `pnpm start` starts the Express server that
+serves both the frontend and the `/api` routes.
+
+Configure the Railway service with:
+
+- Branch: `main`
+- Root directory: `/`
+- Build command: `pnpm run build`
+- Start command: `pnpm start`
+- Healthcheck path: `/api/health`
+- Variable: `DATABASE_URL` set to the Tiger Data primary connection string
+
+Do not expose `DATABASE_URL` as a Vite variable or commit it to the repository.
+After deployment, `/api/health` should return `{"status":"ok",...}` before the
+dashboard is tested.
