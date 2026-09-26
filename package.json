@@ -8,8 +8,8 @@
     "node": ">=22 <25"
   },
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "npm --prefix web run dev",
+    "build": "npm --prefix web ci && npm --prefix web run build",
     "start": "node server.mjs",
     "preview": "vite preview"
   },
