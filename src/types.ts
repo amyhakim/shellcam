@@ -4,6 +4,8 @@ export interface Project {
   utility: Utility
   name: string
   fullName: string
+  latitude: number
+  longitude: number
   x: number
   y: number
   year: number

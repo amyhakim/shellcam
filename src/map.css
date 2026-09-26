@@ -1,0 +1,33 @@
+.real-map {
+  position: relative;
+  z-index: 0;
+  background: #edf2f0;
+  font-family: "DM Sans", sans-serif;
+}
+
+.real-map .leaflet-control-zoom a {
+  color: #172b28;
+}
+
+.real-map .leaflet-control-attribution {
+  color: #687773;
+  font-size: 9px;
+}
+
+.real-map .leaflet-tooltip {
+  border: 0;
+  border-radius: 5px;
+  box-shadow: 0 2px 8px rgba(15, 34, 30, .18);
+  color: #172b28;
+  font: 700 10px "DM Sans", sans-serif;
+}
+
+.real-map .leaflet-popup-content {
+  color: #465854;
+  font: 11px/1.5 "DM Sans", sans-serif;
+}
+
+.real-map .leaflet-popup-content strong {
+  color: #172b28;
+  font-family: Manrope, sans-serif;
+}
