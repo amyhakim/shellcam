@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url'
 const { Pool } = pg
 const app = express()
 const port = Number(process.env.PORT) || 3000
-const directory = path.dirname(fileURLToPath(import.meta.url))
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required')
 
@@ -41,24 +40,6 @@ app.get('/api/health', async (_request, response) => {
     console.error(error)
     response.status(503).json({ status: 'error', message: 'Database unavailable' })
   }
-})
-
-const datasetFiles = new Set([
-  'projects.json',
-  'pairs.json',
-  'clusters.json',
-  'meta.json',
-  'quality.json',
-  'grid.json',
-  'states.json',
-])
-
-app.get('/api/dataset/:file', (request, response) => {
-  const file = request.params.file
-  if (!datasetFiles.has(file)) {
-    return response.status(404).json({ status: 'error', message: 'Dataset not found' })
-  }
-  response.sendFile(path.join(directory, 'web', 'public', 'data', file))
 })
 
 app.get('/api/projects', query(`
@@ -117,7 +98,8 @@ app.use('/api', (_request, response) => {
   response.status(404).json({ status: 'error', message: 'API route not found' })
 })
 
-const dist = path.join(directory, 'web', 'dist')
+const directory = path.dirname(fileURLToPath(import.meta.url))
+const dist = path.join(directory, 'dist')
 app.use(express.static(dist))
 app.use((_request, response) => response.sendFile(path.join(dist, 'index.html')))
 
