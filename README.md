@@ -16,12 +16,12 @@ demo results back to the supplied challenge materials.
 
 ## Run the prototype
 
-The dashboard is dependency-free. Open `index.html` directly, or serve the
-repository locally:
+The dashboard is built with React, TypeScript, and Vite:
 
 ```bash
-python3 -m http.server 8080
+npm install
+npm run dev
 ```
 
-Then visit `http://localhost:8080`. Filters, map markers, ranked opportunities,
-the briefing notification, and the opportunity detail drawer are interactive.
+Filters, map markers, ranked opportunities, the briefing notification, and the
+opportunity detail drawer are interactive.
