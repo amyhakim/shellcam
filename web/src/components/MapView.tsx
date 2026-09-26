@@ -98,13 +98,19 @@ export default function MapView() {
   const spin = useRef(!reduced.current);
   const introTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dataRef = useRef<Dataset>(data);
+  const stateRef = useRef(state);
+  const visiblePairsRef = useRef(visiblePairs);
   dataRef.current = data;
+  stateRef.current = state;
+  visiblePairsRef.current = visiblePairs;
 
   useEffect(() => {
     if (!box.current) return;
     const start = reduced.current ? REGION_VIEWS.southeast : REGION_VIEWS.globe;
     const map = new maplibregl.Map({
       container: box.current, style: createMapStyle(), ...start, maxPitch: 70,
+      interactive: true, dragPan: true, scrollZoom: true, doubleClickZoom: true,
+      touchZoomRotate: true, keyboard: true,
       attributionControl: { compact: true }, canvasContextAttributes: { preserveDrawingBuffer: true, antialias: true },
     });
     mapRef.current = map;
@@ -172,12 +178,24 @@ export default function MapView() {
         const f = featureAt(ev.point);
         if (!f) return;
         const id = f.properties?.id as string;
-        dispatch({ type: "selectProject", id });
+        if (stateRef.current.filters.view === "opportunities") {
+          const pair = visiblePairsRef.current.find((candidate) => candidate.a === id || candidate.b === id);
+          if (pair) dispatch({ type: "select", id: pair.id });
+        } else {
+          dispatch({ type: "selectProject", id });
+        }
       });
-      for (const ev of ["mousedown", "wheel", "touchstart"] as const) map.on(ev, () => {
+      const takeControl = () => {
         spin.current = false;
         if (introTimer.current) clearTimeout(introTimer.current);
-      });
+        map.stop();
+      };
+      for (const ev of ["mousedown", "wheel", "touchstart", "dragstart", "zoomstart", "rotatestart", "pitchstart"] as const)
+        map.on(ev, takeControl);
+
+      const resizeObserver = new ResizeObserver(() => map.resize());
+      resizeObserver.observe(box.current!);
+      map.once("remove", () => resizeObserver.disconnect());
 
       setReady(true);
       if (!reduced.current)
@@ -318,7 +336,7 @@ export default function MapView() {
 
   return (
     <div className="absolute inset-0">
-      <div ref={box} className="h-full w-full" role="region" aria-label="Map of planned transmission projects in Georgia and South Carolina" aria-describedby="map-instructions" />
+      <div ref={box} className="map-interactive h-full w-full" role="region" tabIndex={0} aria-label="Interactive map of planned transmission projects in Georgia and South Carolina" aria-describedby="map-instructions" />
       <p id="map-instructions" className="sr-only">Use the Results list to explore projects and compare pairs with the keyboard. Focus a pair to preview its distance; activate it to select. The Map key explains symbols and routes.</p>
       {unavailable && <p className="map-unavailable map-surface">Unavailable on map: measurement coordinates are missing.</p>}
       {tip && (
