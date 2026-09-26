@@ -1,6 +1,6 @@
 /** Tiny bridge so panels (tour, palette, buttons) can drive the map camera. */
 export type CameraTarget =
-  | { kind: "region"; name: "southeast" | "Savannah" | "Augusta" | "globe" }
+  | { kind: "region"; name: "america" | "southeast" | "Savannah" | "Augusta" | "globe" }
   | { kind: "pair"; id: string }
   | { kind: "project"; id: string }
   | { kind: "zoom"; dir: 1 | -1 };
@@ -23,6 +23,7 @@ export function flyTo(t: CameraTarget) {
 }
 
 export const REGION_VIEWS = {
+  america: { center: [-98.5, 38.2] as [number, number], zoom: 3.35, pitch: 0, bearing: 0 },
   globe: { center: [-72, 27] as [number, number], zoom: 1.45, pitch: 0, bearing: 0 },
   southeast: { center: [-81.35, 32.95] as [number, number], zoom: 6.6, pitch: 38, bearing: -12 },
   Savannah: { center: [-81.1, 32.3] as [number, number], zoom: 9.3, pitch: 52, bearing: -24 },
