@@ -95,6 +95,8 @@ export default function MapView() {
   const [ready, setReady] = useState(false);
   const [tip, setTip] = useState<{ x: number; y: number; node: React.ReactNode } | null>(null);
   const reduced = useRef(typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const spin = useRef(!reduced.current);
+  const introTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dataRef = useRef<Dataset>(data);
   const stateRef = useRef(state);
   const visiblePairsRef = useRef(visiblePairs);
@@ -104,7 +106,7 @@ export default function MapView() {
 
   useEffect(() => {
     if (!box.current) return;
-    const start = REGION_VIEWS.america;
+    const start = reduced.current ? REGION_VIEWS.southeast : REGION_VIEWS.globe;
     const map = new maplibregl.Map({
       container: box.current, style: createMapStyle(), ...start, maxPitch: 70,
       interactive: true, dragPan: true, scrollZoom: true, doubleClickZoom: true,
@@ -184,6 +186,8 @@ export default function MapView() {
         }
       });
       const takeControl = () => {
+        spin.current = false;
+        if (introTimer.current) clearTimeout(introTimer.current);
         map.stop();
       };
       for (const ev of ["mousedown", "wheel", "touchstart", "dragstart", "zoomstart", "rotatestart", "pitchstart"] as const)
@@ -194,6 +198,11 @@ export default function MapView() {
       map.once("remove", () => resizeObserver.disconnect());
 
       setReady(true);
+      if (!reduced.current)
+        introTimer.current = setTimeout(() => {
+          spin.current = false;
+          map.flyTo({ ...REGION_VIEWS.southeast, padding: workspacePadding(map), duration: 2600, curve: 1.6 });
+        }, 700);
       loadGrid()
         .then((g) =>
           (map.getSource("grid") as maplibregl.GeoJSONSource | undefined)?.setData({
@@ -204,11 +213,26 @@ export default function MapView() {
         .catch(() => undefined);
     });
     return () => {
+      if (introTimer.current) clearTimeout(introTimer.current);
       map.remove();
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /* globe spin during the opening, before the fly-in */
+  useEffect(() => {
+    if (!ready) return;
+    const map = mapRef.current!;
+    let raf = 0;
+    const tick = () => {
+      if (!spin.current) return;
+      raf = requestAnimationFrame(tick);
+      if (!map.isMoving()) map.setCenter([map.getCenter().lng + 0.08, map.getCenter().lat]);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [ready]);
 
   /* camera bridge */
   useEffect(() => {
@@ -216,6 +240,8 @@ export default function MapView() {
     const map = mapRef.current!;
     const dur = (ms: number) => (reduced.current ? 0 : ms);
     registerCamera((t: CameraTarget) => {
+      spin.current = false;
+      if (introTimer.current) clearTimeout(introTimer.current);
       if (t.kind === "zoom") {
         if (t.dir > 0) map.zoomIn();
         else map.zoomOut();
@@ -265,6 +291,8 @@ export default function MapView() {
     if (!coords.length) return;
     const b = new maplibregl.LngLatBounds(coords[0], coords[0]);
     coords.forEach((c) => b.extend(c));
+    spin.current = false;
+    if (introTimer.current) clearTimeout(introTimer.current);
     map.setPadding(workspacePadding(map));
     map.fitBounds(b, { padding: 0, maxZoom: 11.5, pitch: 35, bearing: p.region === "Augusta" ? 15 : -18, duration: reduced.current ? 0 : 1200 });
   }, [ready, state.selected, state.selectedProject, state.filters.view, state.advanced.method, data]);
