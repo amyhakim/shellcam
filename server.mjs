@@ -9,8 +9,12 @@ const port = Number(process.env.PORT) || 3000
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required')
 
+const databaseUrl = new URL(process.env.DATABASE_URL)
+databaseUrl.searchParams.delete('sslmode')
+databaseUrl.searchParams.delete('uselibpqcompat')
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: databaseUrl.toString(),
   ssl: { rejectUnauthorized: false },
 })
 
