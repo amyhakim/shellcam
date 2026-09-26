@@ -1,0 +1,16 @@
+# raw downloads are re-fetchable (OSM / Nominatim caches); source PDFs are copied from the starter kit
+data/raw/osm_lines.json
+data/raw/osm_substations.json
+data/interim/
+web/public/sources/
+web/node_modules/
+web/dist/
+__pycache__/
+.pytest_cache/
+testing_Instructions/
+.env
+.env.*
+*.log
+.review/
+.impeccable/
+web/tsconfig.tsbuildinfo
