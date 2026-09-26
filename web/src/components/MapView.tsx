@@ -2,56 +2,60 @@ import * as maplibregl from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { useEffect, useRef, useState } from "react";
 import { loadGrid, loadStates } from "../data/load";
-import { TIER, UTILITY_COLOR, UTILITY_NAME, kmLabel, monthNum, shortName } from "../data/format";
-import type { Dataset, Pair, Project } from "../data/types";
+import { UTILITY_COLOR, UTILITY_NAME, monthNum, shortName } from "../data/format";
+import { activeMapPair, measurementCoordinates, measurementLayer, UTILITY_SYMBOLS, utilitySymbol } from "../data/mapPresentation";
+import type { Dataset, Project } from "../data/types";
 import { useStore } from "../state/store";
+import { PALETTE } from "../design/palette";
+import { createMapStyle } from "../design/mapStyle";
 import { REGION_VIEWS, registerCamera, type CameraTarget } from "./camera";
 
 maplibregl.setWorkerUrl(workerUrl);
 
 type FC = GeoJSON.FeatureCollection;
 const EMPTY: FC = { type: "FeatureCollection", features: [] };
-const PAD = { top: 60, bottom: 60, left: 60, right: 60 };
-
-const ESRI_IMG = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
-const ESRI_DARK = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
-const ESRI_PLACES = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}";
-
-function style(): maplibregl.StyleSpecification {
+/** Keep camera targets inside the geographic space between independent overlays. */
+function workspacePadding(map: maplibregl.Map) {
+  const root = map.getContainer().closest(".map-workspace");
+  const rect = map.getContainer().getBoundingClientRect();
+  const summary = root?.querySelector(".workspace-summary")?.getBoundingClientRect();
+  const results = root?.querySelector(".results-panel.is-expanded")?.getBoundingClientRect();
+  const inspector = root?.querySelector(".inspector-panel.is-expanded")?.getBoundingClientRect();
+  const dock = root?.querySelector(".workspace-dock")?.getBoundingClientRect();
+  const wide = rect.width >= 1280;
   return {
-    version: 8,
-    projection: { type: "globe" },
-    glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
-    sky: {
-      "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 1, 5, 0.8, 8, 0],
-      "sky-color": "#0c1016",
-      "horizon-color": "#1b2a44",
-      "fog-color": "#0c1016",
-      "sky-horizon-blend": 0.6,
-      "horizon-fog-blend": 0.5,
-      "fog-ground-blend": 0.2,
-    },
-    sources: {
-      sat: { type: "raster", tiles: [ESRI_IMG], tileSize: 256, maxzoom: 18, attribution: "Imagery © Esri, Maxar, Earthstar Geographics" },
-      dark: { type: "raster", tiles: [ESRI_DARK], tileSize: 256, maxzoom: 16, attribution: "Basemap © Esri" },
-      labels: { type: "raster", tiles: [ESRI_PLACES], tileSize: 256, maxzoom: 16, attribution: "Places © Esri" },
-    },
-    layers: [
-      { id: "bg", type: "background", paint: { "background-color": "#0c1016" } },
-      { id: "dark", type: "raster", source: "dark", paint: { "raster-brightness-max": 0.85, "raster-contrast": -0.1 } },
-      { id: "sat", type: "raster", source: "sat", layout: { visibility: "none" }, paint: { "raster-brightness-max": 0.5, "raster-saturation": -0.45 } },
-      { id: "labels", type: "raster", source: "labels", minzoom: 4, paint: { "raster-opacity": ["interpolate", ["linear"], ["zoom"], 4, 0.3, 8, 0.6] } },
-    ],
+    top: Math.min((summary?.height ? summary.bottom - rect.top : 72) + 16, rect.height * 0.3),
+    bottom: !wide && dock ? Math.min(rect.bottom - dock.top + 16, rect.height * 0.65) : 72,
+    left: wide && results ? Math.min(results.right - rect.left + 24, rect.width * 0.34) : 24,
+    right: wide && inspector ? Math.min(rect.right - inspector.left + 24, rect.width * 0.34) : 24,
   };
 }
 
-function arc(a: [number, number], b: [number, number], bend = 0.22, n = 28): [number, number][] {
-  const [x1, y1] = a, [x2, y2] = b;
-  const cx = (x1 + x2) / 2 - (y2 - y1) * bend, cy = (y1 + y2) / 2 + (x2 - x1) * bend;
-  return Array.from({ length: n + 1 }, (_, i) => {
-    const t = i / n;
-    return [(1 - t) ** 2 * x1 + 2 * (1 - t) * t * cx + t ** 2 * x2, (1 - t) ** 2 * y1 + 2 * (1 - t) * t * cy + t ** 2 * y2] as [number, number];
-  });
+/** Render the same authored shapes used in the legend and result rows. */
+function addMapSymbols(map: maplibregl.Map) {
+  for (const symbol of Object.values(UTILITY_SYMBOLS)) {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 40;
+    const ctx = canvas.getContext("2d")!;
+    ctx.scale(2, 2);
+    ctx.translate(2, 2);
+    const path = new Path2D(symbol.path);
+    ctx.fillStyle = symbol.color;
+    ctx.strokeStyle = PALETTE["ink-1"];
+    ctx.lineWidth = 1.5;
+    ctx.fill(path);
+    ctx.stroke(path);
+    map.addImage(symbol.id, ctx.getImageData(0, 0, 40, 40), { pixelRatio: 2 });
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 32;
+  const ctx = canvas.getContext("2d")!;
+  ctx.beginPath();
+  ctx.moveTo(16, 5); ctx.lineTo(16, 27);
+  ctx.moveTo(5, 16); ctx.lineTo(27, 16);
+  ctx.strokeStyle = PALETTE["ink-1"]; ctx.lineWidth = 8; ctx.stroke();
+  ctx.strokeStyle = PALETTE["map-measure"]; ctx.lineWidth = 4; ctx.stroke();
+  map.addImage("measurement-tick", ctx.getImageData(0, 0, 32, 32), { pixelRatio: 2 });
 }
 
 function geometryOf(p: Project): GeoJSON.Geometry | null {
@@ -69,42 +73,19 @@ function projectLayers(projects: Project[], hot: Set<string>, sel: Set<string>) 
     const props = {
       id: p.id,
       color: UTILITY_COLOR[p.utility],
-      desc: p.utility === "DESC" ? 1 : 0,
+      symbol: utilitySymbol(p.utility).id,
       approx: p.route?.length ? 0 : 1,
       emph: sel.has(p.id) ? 3 : any ? 0 : hot.has(p.id) ? 2 : 1,
       s: p.window[0] ? monthNum(p.window[0]) : 0,
       e: p.window[1] ? monthNum(p.window[1]) : 99999,
-      label: shortName(p),
+      label: `${UTILITY_NAME[p.utility]} · ${shortName(p)}`,
     };
     (g.type === "Point" ? points : lines).push({ type: "Feature", id: p.id, geometry: g, properties: props });
-    for (const e of p.endpoints)
+    for (const e of g.type === "Point" ? [] : p.endpoints)
       if (e.lat != null && e.lon != null) ends.push({ type: "Feature", geometry: { type: "Point", coordinates: [e.lon, e.lat] }, properties: props });
   }
   const fc = (f: GeoJSON.Feature[]): FC => ({ type: "FeatureCollection", features: f });
   return { lines: fc(lines), points: fc(points), ends: fc(ends) };
-}
-
-function pairLayers(pairs: Pair[], selected: string | null, method: "closest" | "guide") {
-  const arcs: GeoJSON.Feature[] = [], halos: GeoJSON.Feature[] = [];
-  for (const p of pairs) {
-    const tier = p.tier ?? 4;
-    const props = { id: p.id, color: TIER[tier as 1].color, tier, sel: p.id === selected ? 1 : 0, dim: selected && p.id !== selected ? 1 : 0,
-      concurrent: p.timeline === "concurrent" ? 1 : 0, os: p.overlap_window ? monthNum(p.overlap_window[0]) : -1, oe: p.overlap_window ? monthNum(p.overlap_window[1]) : -2 };
-    const [a, b] = p.connector;
-    if (p.km > 0.05 && p.id !== selected) arcs.push({ type: "Feature", id: p.id, geometry: { type: "LineString", coordinates: arc(a, b) }, properties: props });
-    halos.push({ type: "Feature", id: p.id, geometry: { type: "Point", coordinates: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] }, properties: props });
-  }
-  const sel = selected ? pairs.find((p) => p.id === selected) : null;
-  const measure: FC = sel
-    ? {
-        type: "FeatureCollection",
-        features: [
-          { type: "Feature", geometry: { type: "LineString", coordinates: sel.connector }, properties: { label: `${kmLabel(sel, method)}${sel.measurement === "estimate" ? " (est.)" : ""}` } },
-          ...sel.connector.map((c) => ({ type: "Feature" as const, geometry: { type: "Point" as const, coordinates: c }, properties: {} })),
-        ],
-      }
-    : EMPTY;
-  return { arcs: { type: "FeatureCollection", features: arcs } as FC, halos: { type: "FeatureCollection", features: halos } as FC, measure };
 }
 
 export default function MapView() {
@@ -115,6 +96,7 @@ export default function MapView() {
   const [tip, setTip] = useState<{ x: number; y: number; node: React.ReactNode } | null>(null);
   const reduced = useRef(typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches);
   const spin = useRef(!reduced.current);
+  const introTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dataRef = useRef<Dataset>(data);
   dataRef.current = data;
 
@@ -122,7 +104,7 @@ export default function MapView() {
     if (!box.current) return;
     const start = reduced.current ? REGION_VIEWS.southeast : REGION_VIEWS.globe;
     const map = new maplibregl.Map({
-      container: box.current, style: style(), ...start, maxPitch: 70,
+      container: box.current, style: createMapStyle(), ...start, maxPitch: 70,
       attributionControl: { compact: true }, canvasContextAttributes: { preserveDrawingBuffer: true, antialias: true },
     });
     mapRef.current = map;
@@ -130,46 +112,46 @@ export default function MapView() {
 
     map.on("load", async () => {
       map.addSource("states", { type: "geojson", data: await loadStates().catch(() => EMPTY) });
-      for (const id of ["grid", "plines", "ppoints", "ends", "arcs", "halos", "measure"]) map.addSource(id, { type: "geojson", data: EMPTY, promoteId: "id" });
+      addMapSymbols(map);
+      for (const id of ["grid", "plines", "ppoints", "ends", "measure"]) map.addSource(id, { type: "geojson", data: EMPTY, promoteId: "id" });
 
       const emphOpacity = (on: number, hot: number, base: number, off: number): maplibregl.ExpressionSpecification =>
         ["match", ["get", "emph"], 3, on, 2, hot, 1, base, off];
-      map.addLayer({ id: "grid", type: "line", source: "grid", minzoom: 5, paint: { "line-color": "#7c8aa0", "line-width": ["interpolate", ["linear"], ["zoom"], 5, 0.4, 10, 1], "line-opacity": 0.22 } });
-      map.addLayer({ id: "states", type: "line", source: "states", paint: { "line-color": "#e9edf3", "line-opacity": 0.35, "line-width": 1.2, "line-dasharray": [3, 2] } });
-      map.addLayer({ id: "plines-glow", type: "line", source: "plines", filter: ["==", ["get", "emph"], 3], layout: { "line-cap": "round" }, paint: { "line-color": ["get", "color"], "line-width": 12, "line-blur": 6, "line-opacity": 0.5 } });
+      map.addLayer({ id: "grid", type: "line", source: "grid", minzoom: 5, paint: { "line-color": PALETTE["map-grid"], "line-width": ["interpolate", ["linear"], ["zoom"], 5, 0.4, 10, 1], "line-opacity": 0.22 } });
+      map.addLayer({ id: "states", type: "line", source: "states", paint: { "line-color": PALETTE["map-boundary"], "line-opacity": 0.35, "line-width": 1.2, "line-dasharray": [3, 2] } });
       const width: maplibregl.ExpressionSpecification = ["interpolate", ["linear"], ["zoom"], 5, ["match", ["get", "emph"], 3, 3.5, 2, 2.2, 1.4], 11, ["match", ["get", "emph"], 3, 6, 2, 3.4, 2]];
+      for (const approx of [0, 1]) map.addLayer({ id: `route-casing-${approx}`, type: "line", source: "plines",
+        filter: ["all", ["==", ["get", "emph"], 3], ["==", ["get", "approx"], approx]],
+        layout: { "line-join": "round" },
+        paint: { "line-color": PALETTE["ink-1"], "line-width": ["interpolate", ["linear"], ["zoom"], 5, 6.5, 11, 9], ...(approx ? { "line-dasharray": [2.2, 1.4] } : {}) } });
       map.addLayer({ id: "plines", type: "line", source: "plines", filter: ["==", ["get", "approx"], 0], layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": ["get", "color"], "line-width": width, "line-opacity": emphOpacity(1, 0.95, 0.5, 0.14) } });
+        paint: { "line-color": ["get", "color"], "line-width": width, "line-opacity": emphOpacity(1, 0.95, 0.9, 0.24) } });
       map.addLayer({ id: "plines-approx", type: "line", source: "plines", filter: ["==", ["get", "approx"], 1], layout: { "line-join": "round" },
-        paint: { "line-color": ["get", "color"], "line-width": width, "line-opacity": emphOpacity(1, 0.95, 0.5, 0.14), "line-dasharray": [2.2, 1.4] } });
-      map.addLayer({ id: "ppoints", type: "circle", source: "ppoints",
-        paint: { "circle-radius": ["match", ["get", "emph"], 3, 8, 2, 5.5, 4], "circle-color": ["case", ["==", ["get", "desc"], 1], ["get", "color"], "#0c1016"],
-          "circle-stroke-color": ["get", "color"], "circle-stroke-width": 2.2, "circle-opacity": emphOpacity(1, 1, 0.55, 0.15), "circle-stroke-opacity": emphOpacity(1, 1, 0.55, 0.15) } });
-      // redundant encoding: Dominion endpoints filled, Georgia endpoints hollow
-      map.addLayer({ id: "ends", type: "circle", source: "ends", minzoom: 7,
-        paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 2.5, 12, 5.5], "circle-color": ["case", ["==", ["get", "desc"], 1], ["get", "color"], "#0c1016"],
-          "circle-stroke-color": ["get", "color"], "circle-stroke-width": 1.8, "circle-opacity": emphOpacity(1, 1, 0.5, 0.12), "circle-stroke-opacity": emphOpacity(1, 1, 0.5, 0.12) } });
-      map.addLayer({ id: "arcs", type: "line", source: "arcs", layout: { "line-cap": "round" },
-        paint: { "line-color": ["get", "color"], "line-width": 1.6, "line-opacity": ["case", ["==", ["get", "dim"], 1], 0.18, ["==", ["get", "concurrent"], 1], 0.95, 0.55],
-          "line-dasharray": ["case", ["==", ["get", "concurrent"], 1], ["literal", [1, 0]], ["literal", [2, 1.5]]] } });
-      map.addLayer({ id: "halos", type: "circle", source: "halos",
-        paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 4, 10, 9], "circle-color": ["get", "color"], "circle-opacity": ["case", ["==", ["get", "dim"], 1], 0.05, 0.16],
-          "circle-stroke-color": ["get", "color"], "circle-stroke-width": 1.3, "circle-stroke-opacity": ["case", ["==", ["get", "dim"], 1], 0.2, ["==", ["get", "sel"], 1], 0, 0.9] } });
-      map.addLayer({ id: "measure", type: "line", source: "measure", filter: ["==", ["geometry-type"], "LineString"], paint: { "line-color": "#ffffff", "line-width": 2, "line-dasharray": [1, 1.2] } });
-      map.addLayer({ id: "measure-pts", type: "circle", source: "measure", filter: ["==", ["geometry-type"], "Point"], paint: { "circle-radius": 5, "circle-color": "#ffffff", "circle-stroke-color": "#0c1016", "circle-stroke-width": 2 } });
-      map.addLayer({ id: "measure-label", type: "symbol", source: "measure", filter: ["==", ["geometry-type"], "LineString"],
-        layout: { "symbol-placement": "line-center", "text-field": ["get", "label"], "text-font": ["Noto Sans Regular"], "text-size": 13, "text-offset": [0, -1], "text-allow-overlap": true },
-        paint: { "text-color": "#ffffff", "text-halo-color": "#0c1016", "text-halo-width": 2.2 } });
+        paint: { "line-color": ["get", "color"], "line-width": width, "line-opacity": emphOpacity(1, 0.95, 0.9, 0.24), "line-dasharray": [2.2, 1.4] } });
+      for (const id of ["ppoints", "ends"]) map.addLayer({ id, type: "symbol", source: id,
+        layout: { "icon-image": ["get", "symbol"], "icon-size": id === "ends" ? ["match", ["get", "emph"], 3, 0.85, 0.6] : ["match", ["get", "emph"], 3, 1.25, 2, 1.05, 0.85], "icon-allow-overlap": true, "icon-ignore-placement": true },
+        paint: { "icon-opacity": emphOpacity(1, 1, 0.8, 0.3) } });
+      map.addLayer({ id: "measure-casing", type: "line", source: "measure", filter: ["==", ["geometry-type"], "LineString"], paint: { "line-color": PALETTE["ink-1"], "line-width": 5 } });
+      map.addLayer({ id: "measure", type: "line", source: "measure", filter: ["==", ["geometry-type"], "LineString"], paint: { "line-color": PALETTE["map-measure"], "line-width": 2 } });
+      map.addLayer({ id: "measure-pts", type: "symbol", source: "measure", filter: ["==", ["get", "kind"], "endpoint"],
+        layout: { "icon-image": "measurement-tick", "icon-allow-overlap": true, "icon-ignore-placement": true } });
+      map.addLayer({ id: "measure-label", type: "symbol", source: "measure", filter: ["==", ["get", "kind"], "label"],
+        layout: { "text-field": ["get", "label"], "text-font": ["Noto Sans Regular"], "text-size": 14, "text-offset": [0, -1.5], "text-max-width": 18, "text-allow-overlap": true },
+        paint: { "text-color": PALETTE["map-measure"], "text-halo-color": PALETTE["ink-1"], "text-halo-width": 3 } });
       map.addLayer({ id: "sel-label", type: "symbol", source: "plines", filter: ["==", ["get", "emph"], 3],
         layout: { "symbol-placement": "line-center", "text-field": ["get", "label"], "text-font": ["Noto Sans Regular"], "text-size": 12.5, "text-offset": [0, 1.1], "text-allow-overlap": true },
-        paint: { "text-color": ["get", "color"], "text-halo-color": "#0c1016", "text-halo-width": 2 } });
+        paint: { "text-color": ["get", "color"], "text-halo-color": PALETTE["ink-1"], "text-halo-width": 2 } });
       map.addLayer({ id: "sel-label-pt", type: "symbol", source: "ppoints", filter: ["==", ["get", "emph"], 3],
         layout: { "text-field": ["get", "label"], "text-font": ["Noto Sans Regular"], "text-size": 12.5, "text-offset": [0, 1.3], "text-anchor": "top", "text-allow-overlap": true },
-        paint: { "text-color": ["get", "color"], "text-halo-color": "#0c1016", "text-halo-width": 2 } });
+        paint: { "text-color": ["get", "color"], "text-halo-color": PALETTE["ink-1"], "text-halo-width": 2 } });
 
-      const hit = ["halos", "arcs", "plines", "plines-approx", "ppoints"];
+      const hit = ["plines", "plines-approx", "ppoints", "ends"];
+      // A 24px hit area makes narrow lines and small endpoints easier to pick.
+      const featureAt = (point: maplibregl.Point) => map.queryRenderedFeatures(
+        [[point.x - 12, point.y - 12], [point.x + 12, point.y + 12]], { layers: hit },
+      )[0];
       map.on("mousemove", (ev) => {
-        const f = map.queryRenderedFeatures(ev.point, { layers: hit })[0];
+        const f = featureAt(ev.point);
         map.getCanvas().style.cursor = f ? "pointer" : "";
         if (!f) {
           setTip(null);
@@ -179,32 +161,29 @@ export default function MapView() {
         const id = f.properties?.id as string;
         dispatch({ type: "hover", id });
         const d = dataRef.current;
-        if (f.layer.id === "halos" || f.layer.id === "arcs") {
-          const p = d.pairById.get(id);
-          if (p) setTip({ x: ev.point.x, y: ev.point.y, node: <PairTip p={p} a={d.byId.get(p.a)!} b={d.byId.get(p.b)!} /> });
-        } else {
-          const p = d.byId.get(id);
-          if (p) setTip({ x: ev.point.x, y: ev.point.y, node: <ProjectTip p={p} /> });
-        }
+        const p = d.byId.get(id);
+        if (p) setTip({ x: ev.point.x, y: ev.point.y, node: <ProjectTip p={p} /> });
       });
       map.on("mouseout", () => {
         setTip(null);
         dispatch({ type: "hover", id: null });
       });
       map.on("click", (ev) => {
-        const f = map.queryRenderedFeatures(ev.point, { layers: hit })[0];
+        const f = featureAt(ev.point);
         if (!f) return;
         const id = f.properties?.id as string;
-        if (f.layer.id === "halos" || f.layer.id === "arcs") dispatch({ type: "select", id });
-        else dispatch({ type: "selectProject", id });
+        dispatch({ type: "selectProject", id });
       });
-      for (const ev of ["mousedown", "wheel", "touchstart"] as const) map.on(ev, () => (spin.current = false));
+      for (const ev of ["mousedown", "wheel", "touchstart"] as const) map.on(ev, () => {
+        spin.current = false;
+        if (introTimer.current) clearTimeout(introTimer.current);
+      });
 
       setReady(true);
       if (!reduced.current)
-        setTimeout(() => {
+        introTimer.current = setTimeout(() => {
           spin.current = false;
-          map.flyTo({ ...REGION_VIEWS.southeast, duration: 4000, essential: true, curve: 1.6 });
+          map.flyTo({ ...REGION_VIEWS.southeast, padding: workspacePadding(map), duration: 2600, curve: 1.6 });
         }, 700);
       loadGrid()
         .then((g) =>
@@ -216,6 +195,7 @@ export default function MapView() {
         .catch(() => undefined);
     });
     return () => {
+      if (introTimer.current) clearTimeout(introTimer.current);
       map.remove();
       mapRef.current = null;
     };
@@ -228,8 +208,9 @@ export default function MapView() {
     const map = mapRef.current!;
     let raf = 0;
     const tick = () => {
+      if (!spin.current) return;
       raf = requestAnimationFrame(tick);
-      if (spin.current && !map.isMoving()) map.setCenter([map.getCenter().lng + 0.08, map.getCenter().lat]);
+      if (!map.isMoving()) map.setCenter([map.getCenter().lng + 0.08, map.getCenter().lat]);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
@@ -242,13 +223,14 @@ export default function MapView() {
     const dur = (ms: number) => (reduced.current ? 0 : ms);
     registerCamera((t: CameraTarget) => {
       spin.current = false;
+      if (introTimer.current) clearTimeout(introTimer.current);
       if (t.kind === "zoom") {
         if (t.dir > 0) map.zoomIn();
         else map.zoomOut();
         return;
       }
       if (t.kind === "region") {
-        map.flyTo({ ...REGION_VIEWS[t.name], duration: dur(2400), essential: true });
+        map.flyTo({ ...REGION_VIEWS[t.name], padding: workspacePadding(map), duration: dur(1400) });
         return;
       }
       const ids = t.kind === "pair" ? (() => { const p = data.pairById.get(t.id); return p ? [p.a, p.b] : []; })() : [t.id];
@@ -256,8 +238,9 @@ export default function MapView() {
       if (!coords.length) return;
       const b = new maplibregl.LngLatBounds(coords[0], coords[0]);
       coords.forEach((c) => b.extend(c));
-      const cam = map.cameraForBounds(b, { padding: PAD, maxZoom: 11.5 });
-      if (cam) map.flyTo({ ...cam, pitch: 45, bearing: -15, duration: dur(1800), essential: true });
+      // fitBounds adds its padding to the map's existing edge padding.
+      map.setPadding(workspacePadding(map));
+      map.fitBounds(b, { padding: 0, maxZoom: 11.5, pitch: 35, bearing: -15, duration: dur(1200) });
     });
     return () => registerCamera(null);
   }, [ready, data]);
@@ -267,38 +250,44 @@ export default function MapView() {
     if (!ready) return;
     const map = mapRef.current!;
     const byView = state.filters.view === "projects";
-    const sel = !byView && state.selected ? data.pairById.get(state.selected) : null;
+    const active = byView ? null : activeMapPair(visiblePairs, state.hovered, state.selectedProject ? null : state.selected, state.month);
     const hot = new Set(visiblePairs.flatMap((p) => [p.a, p.b]));
-    const selSet = new Set(sel ? [sel.a, sel.b] : state.selectedProject ? [state.selectedProject] : []);
+    const selSet = new Set(active ? [active.a, active.b] : state.selectedProject ? [state.selectedProject] : []);
     const shown = byView ? visibleProjects : visibleProjects.filter((p) => hot.has(p.id) || selSet.has(p.id));
-    const pl = projectLayers(shown, byView ? new Set(visibleProjects.map((p) => p.id)) : hot, selSet);
-    const pr = byView ? { arcs: EMPTY, halos: EMPTY, measure: EMPTY } : pairLayers(visiblePairs, state.selected, state.advanced.method);
+    const hoveredProject = state.hovered && data.byId.has(state.hovered) ? new Set([state.hovered]) : new Set<string>();
+    const pl = projectLayers(shown, hoveredProject, selSet);
     (map.getSource("plines") as maplibregl.GeoJSONSource).setData(pl.lines);
     (map.getSource("ppoints") as maplibregl.GeoJSONSource).setData(pl.points);
     (map.getSource("ends") as maplibregl.GeoJSONSource).setData(pl.ends);
-    (map.getSource("arcs") as maplibregl.GeoJSONSource).setData(pr.arcs);
-    (map.getSource("halos") as maplibregl.GeoJSONSource).setData(pr.halos);
-    (map.getSource("measure") as maplibregl.GeoJSONSource).setData(pr.measure);
-  }, [ready, data, visiblePairs, visibleProjects, state.selected, state.selectedProject, state.filters.view, state.advanced.method]);
+    (map.getSource("measure") as maplibregl.GeoJSONSource).setData(measurementLayer(active, state.advanced.method, data.byId));
+  }, [ready, data, visiblePairs, visibleProjects, state.selected, state.selectedProject, state.hovered, state.month, state.filters.view, state.advanced.method]);
 
-  /* user selection → camera (skip the automatic first selection so the fly-in plays) */
-  const firstSel = useRef(true);
+  /* Explicit selections and shared pair links frame the selected geometry. */
   useEffect(() => {
-    if (!ready || !state.selected) return;
-    if (firstSel.current) {
-      firstSel.current = false;
-      return;
-    }
+    if (!ready || !state.selected || state.selectedProject || state.filters.view === "projects") return;
     const p = data.pairById.get(state.selected);
     if (!p) return;
     const coords = [p.a, p.b].flatMap((id) => { const x = data.byId.get(id)!; return x.route?.length ? x.route.flat() : x.path; }) as [number, number][];
+    coords.push(...(measurementCoordinates(p, state.advanced.method, data.byId) ?? []));
     const map = mapRef.current!;
+    if (!coords.length) return;
     const b = new maplibregl.LngLatBounds(coords[0], coords[0]);
     coords.forEach((c) => b.extend(c));
-    const cam = map.cameraForBounds(b, { padding: PAD, maxZoom: 11.5 });
     spin.current = false;
-    if (cam) map.flyTo({ ...cam, pitch: 45, bearing: p.region === "Augusta" ? 15 : -18, duration: reduced.current ? 0 : 1700, essential: true });
-  }, [ready, state.selected, data]);
+    if (introTimer.current) clearTimeout(introTimer.current);
+    map.setPadding(workspacePadding(map));
+    map.fitBounds(b, { padding: 0, maxZoom: 11.5, pitch: 35, bearing: p.region === "Augusta" ? 15 : -18, duration: reduced.current ? 0 : 1200 });
+  }, [ready, state.selected, state.selectedProject, state.filters.view, state.advanced.method, data]);
+
+  /* Reframe the available map area when a sheet opens or the viewport changes. */
+  useEffect(() => {
+    if (!ready) return;
+    const map = mapRef.current!;
+    const update = () => map.setPadding(workspacePadding(map));
+    update();
+    map.on("resize", update);
+    return () => { map.off("resize", update); };
+  }, [ready, state.resultsOpen, state.analysisOpen]);
 
   /* month filter */
   useEffect(() => {
@@ -306,11 +295,11 @@ export default function MapView() {
     const map = mapRef.current!;
     const m = state.month ? monthNum(state.month) : null;
     const pf: maplibregl.FilterSpecification | null = m != null ? ["all", ["<=", ["get", "s"], m], [">=", ["get", "e"], m]] : null;
-    const of: maplibregl.FilterSpecification | null = m != null ? ["all", ["<=", ["get", "os"], m], [">=", ["get", "oe"], m]] : null;
     map.setFilter("plines", pf ? ["all", ["==", ["get", "approx"], 0], pf] : ["==", ["get", "approx"], 0]);
     map.setFilter("plines-approx", pf ? ["all", ["==", ["get", "approx"], 1], pf] : ["==", ["get", "approx"], 1]);
     for (const id of ["ppoints", "ends"]) map.setFilter(id, pf);
-    for (const id of ["arcs", "halos"]) map.setFilter(id, of);
+    for (const approx of [0, 1]) map.setFilter(`route-casing-${approx}`, ["all", ["==", ["get", "emph"], 3], ["==", ["get", "approx"], approx], ...(pf ? [pf] : [])]);
+    for (const id of ["sel-label", "sel-label-pt"]) map.setFilter(id, ["all", ["==", ["get", "emph"], 3], ...(pf ? [pf] : [])]);
   }, [ready, state.month]);
 
   /* basemap + grid */
@@ -318,39 +307,25 @@ export default function MapView() {
     if (!ready) return;
     const map = mapRef.current!;
     map.setLayoutProperty("sat", "visibility", state.basemap === "satellite" ? "visible" : "none");
-    map.setLayoutProperty("dark", "visibility", state.basemap === "dark" ? "visible" : "none");
+    for (const layer of map.getStyle().layers) {
+      if (layer.id.startsWith("terrain-")) map.setLayoutProperty(layer.id, "visibility", state.basemap === "dark" ? "visible" : "none");
+    }
     map.setLayoutProperty("grid", "visibility", state.showGrid ? "visible" : "none");
   }, [ready, state.basemap, state.showGrid]);
 
-  /* hover sync from the table */
-  useEffect(() => {
-    if (!ready) return;
-    const map = mapRef.current!;
-    const h = state.hovered ?? "";
-    map.setPaintProperty("arcs", "line-width", ["case", ["==", ["get", "id"], h], 4, 1.6]);
-    map.setPaintProperty("halos", "circle-stroke-width", ["case", ["==", ["get", "id"], h], 3.5, 1.3]);
-    map.setFilter("plines-glow", ["any", ["==", ["get", "emph"], 3], ["==", ["get", "id"], h]]);
-  }, [ready, state.hovered]);
+  const active = state.filters.view === "projects" ? null : activeMapPair(visiblePairs, state.hovered, state.selectedProject ? null : state.selected, state.month);
+  const unavailable = active && !measurementCoordinates(active, state.advanced.method, data.byId);
 
   return (
     <div className="absolute inset-0">
-      <div ref={box} className="h-full w-full" role="region" aria-label="Map of planned transmission projects in Georgia and South Carolina" />
+      <div ref={box} className="h-full w-full" role="region" aria-label="Map of planned transmission projects in Georgia and South Carolina" aria-describedby="map-instructions" />
+      <p id="map-instructions" className="sr-only">Use the Results list to explore projects and compare pairs with the keyboard. Focus a pair to preview its distance; activate it to select. The Map key explains symbols and routes.</p>
+      {unavailable && <p className="map-unavailable map-surface">Unavailable on map: measurement coordinates are missing.</p>}
       {tip && (
-        <div className="pointer-events-none absolute z-30 max-w-[300px] rounded-xl border border-line bg-ink-1/95 px-3 py-2 text-[12.5px] shadow-[var(--shadow-panel)]" style={{ left: tip.x + 14, top: tip.y + 12 }}>
+        <div className="pointer-events-none absolute z-30 max-w-[300px] rounded-xl border border-line bg-ink-1/95 px-3 py-2 text-[12.5px] shadow-[var(--shadow-panel)]" style={{ left: Math.max(8, Math.min(tip.x + 14, (box.current?.clientWidth ?? 320) - 308)), top: Math.max(8, Math.min(tip.y + 12, (box.current?.clientHeight ?? 240) - 120)) }}>
           {tip.node}
         </div>
       )}
-    </div>
-  );
-}
-
-function PairTip({ p, a, b }: { p: Pair; a: Project; b: Project }) {
-  const t = TIER[(p.tier ?? 4) as 1];
-  return (
-    <div>
-      <div className="num font-semibold" style={{ color: t.color }}>{kmLabel(p)} · {t.label}</div>
-      <div><span style={{ color: UTILITY_COLOR[a.utility] }}>{shortName(a)}</span> ↔ <span style={{ color: UTILITY_COLOR[b.utility] }}>{shortName(b)}</span></div>
-      <div className="num text-fg-3">{(p.in_service_gap_days ?? 0).toLocaleString()} days apart · score {p.score.toFixed(0)}</div>
     </div>
   );
 }

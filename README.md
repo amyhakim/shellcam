@@ -11,7 +11,7 @@ One dashboard, Power BI-style: five filters, compact metrics, a map linked to a 
 
 - **Filters (5):** Utility · Planned completion year · Voltage · Distance (40 km / 8 km / 1.6 km / touching) · Show opportunities or all projects. One *Reset filters*. Methodology settings (closest vs center points, region, timing) live in *How this was calculated*.
 - **Metrics:** projects · projects close enough to coordinate · timeline matches (overlapping builds + completions within 180 days) · closest pair.
-- **Map:** globe fly-in to the GA/SC border, quiet basemap (satellite optional). Stable utility colors plus filled (Dominion) vs hollow (Georgia) endpoint markers. Solid = mapped route, dashed = approximate (drawn between named endpoints). The selected pair shows a measured connector between its two closest points; unrelated projects fade. Hover and selection are synced between map and table.
+- **Map:** globe fly-in to the GA/SC border, a dusk basemap with blue water, green terrain and muted warm roads (satellite optional). Stable utility colors plus circle (Dominion) and square (Georgia) markers; other utilities use neutral diamonds. Solid = mapped route, dashed = approximate (drawn between named endpoints). The selected pair shows a measured connector between its two closest points; unrelated projects fade. Hover and selection are synced between map and table.
 - **Ranked table:** 100-point deterministic score (geography 50, timeline 25, compatibility 15, data confidence 10), priority, crossing override, "estimate" labels. Also serves as the accessible alternative to the map; switches to a project table in *All projects*.
 - **Selected pair:** timeline (overlapping construction vs close completion dates; "insufficient schedule data" when missing), score breakdown, plain-language meaning, actions to investigate, status, optional illustrative impact estimate with editable assumptions.
 - **Source & confidence drawer:** normalized record per project, original values as filed, page excerpt, geometry/schedule confidence, limitations, and the two measured points.
@@ -57,6 +57,6 @@ The starter kit must sit next to this folder as `../Sperry-Tech-Challenge/` (its
 - Dominion Energy South Carolina, *Planned Transmission Projects $2M and above (2024–2028)*, SCRTP.
 - Georgia Power, *2025 IRP Technical Appendix Volume 3* (public disclosure), Georgia PSC Docket 56002.
 - Substations, plants, existing lines: © OpenStreetMap contributors (ODbL). Place search: Nominatim.
-- Imagery, basemap and place labels: Esri, Maxar, Earthstar Geographics. Glyphs: OpenFreeMap.
+- Vector geography and place labels: OpenFreeMap / OpenMapTiles / OpenStreetMap. Satellite imagery: Esri, Maxar, Earthstar Geographics. Glyphs: OpenFreeMap.
 
 Public data only. Nothing marked CEII is used; redacted values stay redacted.

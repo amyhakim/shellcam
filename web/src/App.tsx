@@ -48,19 +48,19 @@ function Shell() {
         dispatch({ type: "palette", on: !state.palette });
       } else if (e.key === "Escape") {
         if (state.palette) dispatch({ type: "palette", on: false });
-        else if (state.tourStep != null) dispatch({ type: "tour", step: null });
+        else if (state.tourStep != null && !state.drawer) dispatch({ type: "tour", step: null });
       }
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [dispatch, state.palette, state.tourStep]);
+  }, [dispatch, state.palette, state.tourStep, state.drawer]);
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-hidden">
       <Dashboard />
       {state.drawer === "source" && <SourceDrawer />}
       {state.drawer === "method" && <MethodDrawer />}
-      {state.tourStep != null && <Tour />}
+      {state.tourStep != null && !state.drawer && <Tour />}
       {state.palette && <CommandPalette />}
     </div>
   );

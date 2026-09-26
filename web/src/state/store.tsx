@@ -21,6 +21,7 @@ export const RANGES: { v: Range; label: string }[] = [
 export type UtilityFilter = "both" | "DESC" | "GPC" | "allGA";
 export type VoltageFilter = "all" | "low" | "115" | "230" | "500";
 export type ViewMode = "opportunities" | "projects";
+export type WorkspacePanel = "results" | "details" | "insights";
 
 /** The five primary filters (spec 4.4). */
 export interface Filters {
@@ -53,6 +54,9 @@ export interface State {
   drawer: Drawer;
   tourStep: number | null;
   palette: boolean;
+  analysisPanel: "details" | "insights";
+  resultsOpen: boolean;
+  analysisOpen: boolean;
   assumptions: Assumptions;
   status: Record<string, Status>;
 }
@@ -61,8 +65,8 @@ export type Action =
   | { type: "filters"; patch: Partial<Filters> }
   | { type: "advanced"; patch: Partial<Advanced> }
   | { type: "resetFilters" }
-  | { type: "select"; id: string | null }
-  | { type: "selectProject"; id: string | null }
+  | { type: "select"; id: string | null; reveal?: boolean }
+  | { type: "selectProject"; id: string | null; reveal?: boolean }
   | { type: "hover"; id: string | null }
   | { type: "month"; month: string | null }
   | { type: "basemap"; basemap: State["basemap"] }
@@ -70,6 +74,7 @@ export type Action =
   | { type: "drawer"; drawer: Drawer }
   | { type: "tour"; step: number | null }
   | { type: "palette"; on: boolean }
+  | { type: "workspace"; panel: WorkspacePanel; open?: boolean }
   | { type: "assumption"; key: keyof Assumptions; value: number }
   | { type: "resetAssumptions" }
   | { type: "status"; id: string; status: Status };
@@ -101,10 +106,13 @@ export function initialState(): State {
     hovered: null,
     month: null,
     basemap: "dark",
-    showGrid: true,
+    showGrid: false,
     drawer: null,
     tourStep: null,
     palette: false,
+    analysisPanel: "details",
+    resultsOpen: typeof matchMedia !== "undefined" && matchMedia("(min-width: 760px)").matches,
+    analysisOpen: !!fromHash().selected || (typeof matchMedia !== "undefined" && matchMedia("(min-width: 1280px)").matches),
     ...loadLocal(),
     ...fromHash(),
   };
@@ -113,15 +121,17 @@ export function initialState(): State {
 export function reducer(s: State, a: Action): State {
   switch (a.type) {
     case "filters":
-      return { ...s, filters: { ...s.filters, ...a.patch } };
+      return { ...s, filters: { ...s.filters, ...a.patch }, ...(a.patch.view ? { resultsOpen: true } : {}) };
     case "advanced":
       return { ...s, advanced: { ...s.advanced, ...a.patch } };
     case "resetFilters":
       return { ...s, filters: DEFAULT_FILTERS, advanced: DEFAULT_ADVANCED, month: null, selectedProject: null };
     case "select":
-      return { ...s, selected: a.id, palette: false };
+      return { ...s, selected: a.id, selectedProject: null, palette: false,
+        ...(a.reveal === false ? {} : { analysisPanel: s.analysisOpen ? s.analysisPanel : "details" as const, analysisOpen: true }) };
     case "selectProject":
-      return { ...s, selectedProject: a.id, palette: false };
+      return { ...s, selectedProject: a.id, palette: false,
+        ...(a.reveal === false ? {} : { analysisPanel: s.analysisOpen ? s.analysisPanel : "details" as const, analysisOpen: true }) };
     case "hover":
       return s.hovered === a.id ? s : { ...s, hovered: a.id };
     case "month":
@@ -136,6 +146,10 @@ export function reducer(s: State, a: Action): State {
       return { ...s, tourStep: a.step, palette: false };
     case "palette":
       return { ...s, palette: a.on };
+    case "workspace":
+      return a.panel === "results"
+        ? { ...s, resultsOpen: a.open ?? true }
+        : { ...s, analysisPanel: a.panel, analysisOpen: a.open ?? true };
     case "assumption":
       return { ...s, assumptions: { ...s.assumptions, [a.key]: a.value } };
     case "resetAssumptions":
@@ -177,11 +191,13 @@ export function StoreProvider({ data, children }: { data: Dataset; children: Rea
   const visibleProjects = useMemo(() => filterProjects(data, state), [data, state]);
   const visiblePairs = useMemo(() => filterPairs(data, state), [data, state]);
 
-  // keep a pair selected so the timeline and explanation always have content
+  // Start with the whole network; filtered-out selections must not leave stale evidence.
   useEffect(() => {
-    if (!visiblePairs.length) return;
-    if (!state.selected || !visiblePairs.some((p) => p.id === state.selected)) dispatch({ type: "select", id: visiblePairs[0].id });
+    if (state.selected && !visiblePairs.some((p) => p.id === state.selected)) dispatch({ type: "select", id: null, reveal: false });
   }, [visiblePairs, state.selected]);
+  useEffect(() => {
+    if (state.selectedProject && !visibleProjects.some((p) => p.id === state.selectedProject)) dispatch({ type: "selectProject", id: null, reveal: false });
+  }, [visibleProjects, state.selectedProject]);
 
   const value = useMemo(() => ({ state, dispatch, data, visiblePairs, visibleProjects }), [state, data, visiblePairs, visibleProjects]);
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;

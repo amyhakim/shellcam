@@ -10,7 +10,7 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 export default function SourceDrawer() {
   const { state, dispatch, data } = useStore();
   const close = () => dispatch({ type: "drawer", drawer: null });
-  const pair = state.filters.view === "opportunities" && state.selected ? data.pairById.get(state.selected) : null;
+  const pair = !state.selectedProject && state.filters.view === "opportunities" && state.selected ? data.pairById.get(state.selected) : null;
   const projects = pair ? [data.byId.get(pair.a)!, data.byId.get(pair.b)!] : state.selectedProject ? [data.byId.get(state.selectedProject)!] : [];
   return (
     <Drawer title="Source and confidence" sub="Every field below comes from a public filing page or a stated calculation" onClose={close}>

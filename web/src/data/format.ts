@@ -1,3 +1,4 @@
+import { PALETTE } from "../design/palette";
 import type { Pair, Project, TierId, Utility } from "./types";
 
 export const UTILITY_NAME: Record<Utility, string> = {
@@ -9,18 +10,18 @@ export const UTILITY_NAME: Record<Utility, string> = {
 };
 
 export const UTILITY_COLOR: Record<Utility, string> = {
-  DESC: "#2ee6a6",
-  GPC: "#a594ff",
-  GTC: "#8b93a7",
-  MEAG: "#8b93a7",
-  DU: "#8b93a7",
+  DESC: PALETTE.desc,
+  GPC: PALETTE.gpc,
+  GTC: PALETTE.coplan,
+  MEAG: PALETTE.coplan,
+  DU: PALETTE.coplan,
 };
 
 export const TIER: Record<TierId, { label: string; short: string; color: string; blurb: string; reach: string }> = {
-  1: { label: "Must coordinate", short: "Crossing", color: "#ff4d6d", reach: "touching", blurb: "The lines touch or cross, so outage timing and crossing structures have to be planned together." },
-  2: { label: "Share the land", short: "< 1 mi", color: "#ff9f1c", reach: "under 1 mile", blurb: "Close enough to share right-of-way, access roads and permits." },
-  3: { label: "Share the site", short: "< 5 mi", color: "#ffd23f", reach: "under 5 miles", blurb: "Close enough to share a laydown yard, deliveries and site logistics." },
-  4: { label: "Share crews", short: "< 25 mi", color: "#4cc9f0", reach: "under 25 miles", blurb: "Within a morning's drive of one staging yard, so crews, cranes and contractors can be shared." },
+  1: { label: "Must coordinate", short: "Crossing", color: PALETTE["t1"], reach: "touching", blurb: "The lines touch or cross, so outage timing and crossing structures have to be planned together." },
+  2: { label: "Share the land", short: "< 1 mi", color: PALETTE["t2"], reach: "under 1 mile", blurb: "Close enough to share right-of-way, access roads and permits." },
+  3: { label: "Share the site", short: "< 5 mi", color: PALETTE["t3"], reach: "under 5 miles", blurb: "Close enough to share a laydown yard, deliveries and site logistics." },
+  4: { label: "Share crews", short: "< 25 mi", color: PALETTE["t4"], reach: "under 25 miles", blurb: "Within a morning's drive of one staging yard, so crews, cranes and contractors can be shared." },
 };
 
 const SMALL = new Set(["and", "of", "the", "to", "at", "in", "on", "for"]);
@@ -136,7 +137,7 @@ export function priority(p: Pair): Priority {
   if (t <= 3 || p.timeline === "concurrent") return "Medium";
   return "Low";
 }
-export const PRIORITY_COLOR: Record<Priority, string> = { High: "#ff9f1c", Medium: "#4cc9f0", Low: "#7e8899" };
+export const PRIORITY_COLOR: Record<Priority, string> = { High: PALETTE["t2"], Medium: PALETTE["t4"], Low: PALETTE["fg-3"] };
 
 export function kmLabel(p: Pair, method: "closest" | "guide" = "closest"): string {
   const km = method === "closest" ? p.km : p.center_mi * 1.609;

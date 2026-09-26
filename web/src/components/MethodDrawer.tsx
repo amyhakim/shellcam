@@ -1,4 +1,5 @@
 import { Check, ExternalLink } from "lucide-react";
+import { PALETTE } from "../design/palette";
 import { CONF_LABEL, TIER } from "../data/format";
 import type { TierId } from "../data/types";
 import { useStore } from "../state/store";
@@ -6,7 +7,7 @@ import { TierIcon } from "./bits";
 import Drawer from "./Drawer";
 
 const CONF_ORDER = ["manual", "sample", "osm", "osm_fuzzy", "inferred", "town", "unlocated"];
-const CONF_COLOR: Record<string, string> = { manual: "#2ee6a6", sample: "#2ee6a6", osm: "#4cc9f0", osm_fuzzy: "#7aa7ff", inferred: "#ffd23f", town: "#ff9f1c", unlocated: "#4a5568" };
+const CONF_COLOR: Record<string, string> = { manual: PALETTE.success, sample: PALETTE.success, osm: PALETTE.info, osm_fuzzy: PALETTE.coplan, inferred: PALETTE.t3, town: PALETTE.warning, unlocated: PALETTE["line-strong"] };
 
 export default function MethodDrawer() {
   const { state, dispatch, data } = useStore();
@@ -100,7 +101,7 @@ export default function MethodDrawer() {
       <Section title="Sources">
         <ul className="space-y-1">
           {data.meta.sources.map((s) => <li key={s.id}><a className="inline-flex items-center gap-1 underline" href={`/${s.file}`} target="_blank" rel="noopener">{s.title}<ExternalLink size={11} /></a> <span className="text-fg-3">· {s.publisher}</span></li>)}
-          <li>Facility locations and existing lines: © OpenStreetMap contributors (ODbL). Place search: Nominatim. Basemap: Esri.</li>
+          <li>Facility locations and existing lines: © OpenStreetMap contributors (ODbL). Place search: Nominatim. Map: OpenFreeMap / OpenMapTiles / OpenStreetMap. Satellite: Esri.</li>
           <li>Public data only. Nothing marked CEII is used; redacted values stay redacted.</li>
         </ul>
       </Section>

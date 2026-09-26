@@ -8,7 +8,7 @@ import { TierIcon } from "./bits";
 
 export default function Insights() {
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
+    <div className="workspace-insights">
       <ValueByTier />
       <Monthly />
       <Quality />
@@ -18,7 +18,7 @@ export default function Insights() {
 
 function Card({ title, sub, children, action }: { title: string; sub: string; children: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <section className="panel flex flex-col p-4">
+    <section className="detail-section flex flex-col">
       <div className="flex items-start justify-between gap-2">
         <div>
           <h2 className="text-[15px] font-semibold">{title}</h2>
@@ -87,7 +87,7 @@ function Monthly() {
           return (
             <g key={i} className="cursor-pointer" onClick={() => dispatch({ type: "month", month: on ? null : key(months[i]) })}>
               <rect x={i * bw} y={0} width={bw} height={H} fill="transparent" />
-              {c > 0 && <rect x={i * bw + 0.4} width={bw - 0.8} y={H - (c / max) * (H - 6)} height={(c / max) * (H - 6)} rx={1} fill={on ? "#fff" : "var(--color-t3)"} opacity={on ? 1 : 0.85} />}
+              {c > 0 && <rect x={i * bw + 0.4} width={bw - 0.8} y={H - (c / max) * (H - 6)} height={(c / max) * (H - 6)} rx={1} fill={on ? "var(--color-fg)" : "var(--color-t3)"} opacity={on ? 1 : 0.85} />}
             </g>
           );
         })}

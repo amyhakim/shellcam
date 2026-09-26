@@ -1,9 +1,11 @@
 import { ChevronDown, FileText, RotateCcw, ScrollText } from "lucide-react";
 import { useState } from "react";
-import { PRIORITY_COLOR, TIER, UTILITY_COLOR, kmLabel, money, priority, shortName } from "../data/format";
+import { PRIORITY_COLOR, UTILITY_COLOR, money, priority, shortName } from "../data/format";
 import { ASSUMPTION_META, estimateSavings, type Assumptions } from "../data/savings";
 import type { Pair, Project } from "../data/types";
 import { STATUSES, useStore, type Status } from "../state/store";
+import { UtilitySymbol } from "./bits";
+import { measurementCoordinates, measurementText, pairVisibleInMonth } from "../data/mapPresentation";
 import BuildWindows from "./BuildWindows";
 
 export default function SelectedCards() {
@@ -12,9 +14,9 @@ export default function SelectedCards() {
   if (!p) return null;
   const a = data.byId.get(p.a)!, b = data.byId.get(p.b)!;
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_440px]">
-      <TimelineCard p={p} a={a} b={b} />
+    <div className="selection-details">
       <ExplanationCard p={p} a={a} b={b} />
+      <TimelineCard p={p} a={a} b={b} />
     </div>
   );
 }
@@ -30,16 +32,16 @@ function TimelineCard({ p, a, b }: { p: Pair; a: Project; b: Project }) {
         ? { c: "var(--color-t4)", t: `Planned completion dates are ${p.in_service_gap_days} days apart`, s: "Close finish dates, but the build windows don't overlap." }
         : { c: "var(--color-t2)", t: `Planned completion dates are ${(p.in_service_gap_days ?? 0).toLocaleString()} days apart`, s: "Review construction schedules before treating this as concurrent work." };
   return (
-    <section className="panel p-4" aria-label="Selected pair timeline">
+    <section className="detail-section" aria-label="Selected pair timeline">
       <h2 className="text-[15px] font-semibold">Selected-pair timeline</h2>
       <p className="text-[12px] text-fg-3">Planned construction start → planned completion, from each filing</p>
-      <div className="mt-4 grid grid-cols-[minmax(0,190px)_1fr] items-start gap-4">
-        <div className="space-y-5 pt-2 text-[13px]">
+      <div className="timeline-layout">
+        <div className="timeline-names">
           {[a, b].map((x) => (
             <div key={x.id}>
               <div className="flex items-center gap-2">
-                <span className={`h-2.5 w-2.5 shrink-0 rounded-full border-2 ${x.utility === "DESC" ? "" : "bg-ink-1"}`} style={{ borderColor: UTILITY_COLOR[x.utility], background: x.utility === "DESC" ? UTILITY_COLOR[x.utility] : undefined }} />
-                <span className="truncate font-medium" style={{ color: UTILITY_COLOR[x.utility] }}>{shortName(x)}</span>
+                <UtilitySymbol utility={x.utility} />
+                <span className="font-medium" style={{ color: UTILITY_COLOR[x.utility] }}>{shortName(x)}</span>
               </div>
               <div className="pl-[18px] text-[11.5px] text-fg-3">{x.utility === "DESC" ? "start = first budgeted year" : "start = filed start date"}</div>
             </div>
@@ -77,12 +79,15 @@ const ACTIONS = (p: Pair) =>
   ].filter(([, ok]) => ok).map(([t]) => t as string);
 
 function ExplanationCard({ p, a, b }: { p: Pair; a: Project; b: Project }) {
-  const { state, dispatch } = useStore();
+  const { state, dispatch, data } = useStore();
+  const measurement = measurementText(p, state.advanced.method);
+  const hasGeometry = !!measurementCoordinates(p, state.advanced.method, data.byId);
+  const monthVisible = pairVisibleInMonth(p, state.month);
   const [impact, setImpact] = useState(false);
   const pr = priority(p);
   const tier = p.tier ?? 4;
   return (
-    <section className="panel p-4" aria-label="Why this opportunity ranks here">
+    <section className="detail-section" aria-label="Why this opportunity ranks here">
       <div className="flex items-center justify-between gap-2">
         <span className="num text-[12px] text-fg-3">Rank #{p.rank} · {p.score.toFixed(0)} / 100</span>
         <span className="flex gap-1.5">
@@ -91,13 +96,22 @@ function ExplanationCard({ p, a, b }: { p: Pair; a: Project; b: Project }) {
         </span>
       </div>
       <h2 className="mt-1.5 text-[15px] font-semibold leading-snug">
-        <span style={{ color: UTILITY_COLOR[a.utility] }}>{shortName(a)}</span> <span className="text-fg-3">↔</span> <span style={{ color: UTILITY_COLOR[b.utility] }}>{shortName(b)}</span>
+        <span style={{ color: UTILITY_COLOR[a.utility] }}><UtilitySymbol utility={a.utility} /> {shortName(a)}</span> <span className="text-fg-3">↔</span> <span style={{ color: UTILITY_COLOR[b.utility] }}><UtilitySymbol utility={b.utility} /> {shortName(b)}</span>
       </h2>
       <dl className="mt-3 grid grid-cols-3 gap-2">
-        <Metric label="Distance" value={kmLabel(p, state.advanced.method)} sub={p.measurement === "estimate" ? "estimate from endpoints" : "mapped routes"} color={TIER[tier].color} />
-        <Metric label="Completion dates" value={`${(p.in_service_gap_days ?? 0).toLocaleString()} d`} sub="apart" />
+        <Metric label="Distance" value={measurement.distance} sub={measurement.description} />
+        <Metric label="Completion dates" value={p.in_service_gap_days == null ? "Unknown" : `${p.in_service_gap_days.toLocaleString()} d`} sub="apart" />
         <Metric label="Construction" value={p.overlap_days ? `${Math.round(p.overlap_days / 30.4)} mo` : "No overlap"} sub={p.overlap_days ? "overlapping" : "windows apart"} />
       </dl>
+
+      {!hasGeometry && <p className="measurement-notice">Unavailable on map: measurement coordinates are missing.</p>}
+      {!monthVisible && <div className="measurement-notice">Measurement hidden by the month filter.
+        <button className="btn" onClick={() => dispatch({ type: "month", month: null })}>Clear month filter</button>
+      </div>}
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <button className="btn h-9 justify-center border border-line-strong text-fg" onClick={() => dispatch({ type: "drawer", drawer: "source" })}><ScrollText size={15} /> View source</button>
+        <a className="btn btn-primary h-9 justify-center" href={`#/brief/${encodeURIComponent(p.id)}`} target="_blank" rel="noopener"><FileText size={15} /> Coordination brief</a>
+      </div>
 
       <h3 className="mt-4 text-[12.5px] font-semibold">How the score adds up</h3>
       <ul className="mt-1.5 space-y-1.5">
@@ -118,10 +132,6 @@ function ExplanationCard({ p, a, b }: { p: Pair; a: Project; b: Project }) {
         {ACTIONS(p).map((t) => <li key={t}>{t}</li>)}
       </ul>
 
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        <button className="btn h-9 justify-center border border-line-strong text-fg" onClick={() => dispatch({ type: "drawer", drawer: "source" })}><ScrollText size={15} /> View source</button>
-        <a className="btn btn-primary h-9 justify-center" href={`#/brief/${encodeURIComponent(p.id)}`} target="_blank" rel="noopener"><FileText size={15} /> Coordination brief</a>
-      </div>
       <label className="mt-2.5 flex items-center gap-2 text-[12.5px]">
         <span className="label">Status</span>
         <select className="h-8 flex-1 cursor-pointer rounded-lg border border-line bg-ink-2 px-2 text-[13px] outline-none focus-visible:border-t3"

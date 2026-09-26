@@ -1,6 +1,8 @@
 import { HardHat, LandPlot, Merge, Warehouse, type LucideProps } from "lucide-react";
-import { TIER, UTILITY_COLOR, UTILITY_NAME } from "../data/format";
-import type { Pair, Project, TierId } from "../data/types";
+import { TIER, UTILITY_NAME } from "../data/format";
+import type { Pair, Project, TierId, Utility } from "../data/types";
+
+import { utilitySymbol } from "../data/mapPresentation";
 
 const ICONS = { 1: Merge, 2: LandPlot, 3: Warehouse, 4: HardHat } as const;
 
@@ -19,8 +21,15 @@ export function TierChip({ tier, compact = false }: { tier: TierId; compact?: bo
   );
 }
 
-export function UtilityDot({ p, size = 8 }: { p: Project; size?: number }) {
-  return <span className="inline-block shrink-0 rounded-full" style={{ width: size, height: size, background: UTILITY_COLOR[p.utility] }} aria-label={UTILITY_NAME[p.utility]} />;
+export function UtilitySymbol({ utility, size = 16 }: { utility: Utility; size?: number }) {
+  const symbol = utilitySymbol(utility);
+  return <svg className="utility-symbol" width={size} height={size} viewBox="0 0 16 16" role="img" aria-label={`${UTILITY_NAME[utility]} (${symbol.shape.toLowerCase()})`}>
+    <path d={symbol.path} fill={symbol.color} stroke="var(--color-ink-1)" strokeWidth="1" />
+  </svg>;
+}
+
+export function UtilityDot({ p, size = 12 }: { p: Project; size?: number }) {
+  return <UtilitySymbol utility={p.utility} size={size} />;
 }
 
 
