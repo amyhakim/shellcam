@@ -18,7 +18,7 @@ export interface Opportunity {
   b: string
   distanceKm: number
   distanceMiles: number
-  dateGapDays: number
+  dateGapDays: number | null
   priority: 'High' | 'Medium'
   reason: string
 }

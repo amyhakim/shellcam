@@ -45,9 +45,48 @@ app.get('/api/projects', query(`
 `))
 
 app.get('/api/opportunities', query(`
-  SELECT overlap_id, project_a_id, project_b_id, distance_miles, time_gap_days
-  FROM project_overlaps
-  ORDER BY distance_miles, time_gap_days
+  WITH calculated_pairs AS (
+    SELECT
+      a.project_id AS project_a_id,
+      b.project_id AS project_b_id,
+      ST_Distance(a.location, b.location) AS distance_meters,
+      CASE
+        WHEN a.in_service_date IS NOT NULL AND b.in_service_date IS NOT NULL
+        THEN ABS(a.in_service_date - b.in_service_date)
+        ELSE NULL
+      END AS time_gap_days,
+      a.location AS closest_point_a,
+      b.location AS closest_point_b
+    FROM projects a
+    JOIN projects b
+      ON a.utility <> b.utility
+     AND a.project_id < b.project_id
+     AND a.location IS NOT NULL
+     AND b.location IS NOT NULL
+     AND ST_DWithin(a.location, b.location, 40000)
+  )
+  SELECT
+    COALESCE(
+      supplied.overlap_id,
+      'CALC_' || pairs.project_a_id || '_' || pairs.project_b_id
+    ) AS overlap_id,
+    pairs.project_a_id,
+    pairs.project_b_id,
+    ROUND((pairs.distance_meters / 1609.344)::numeric, 2) AS distance_miles,
+    ROUND((pairs.distance_meters / 1000)::numeric, 2) AS distance_km,
+    pairs.time_gap_days,
+    ST_Y(pairs.closest_point_a::geometry) AS measurement_lat_a,
+    ST_X(pairs.closest_point_a::geometry) AS measurement_lon_a,
+    ST_Y(pairs.closest_point_b::geometry) AS measurement_lat_b,
+    ST_X(pairs.closest_point_b::geometry) AS measurement_lon_b,
+    'center_point' AS geometry_method,
+    'approximate' AS geometry_confidence,
+    NOW() AS calculated_at
+  FROM calculated_pairs pairs
+  LEFT JOIN project_overlaps supplied
+    ON supplied.project_a_id = pairs.project_a_id
+   AND supplied.project_b_id = pairs.project_b_id
+  ORDER BY pairs.distance_meters, pairs.time_gap_days NULLS LAST
 `))
 
 const directory = path.dirname(fileURLToPath(import.meta.url))
